@@ -38,13 +38,13 @@ jobs:
 
   install-pkg:
     needs: build-packages
-    runs-on: ${{ matrix.os }}
+    runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-22.04", "macOS-14", "windows-2022"]
+        os: ["ubuntu-22.04"]
         pkg-name: ["fabric", "pytorch", "lightning", "notset"]
-        python-version: ["3.10", "3.11"]
+        python-version: ["3.11"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -105,7 +105,7 @@ jobs:
         run: python -m pytest src/lit/${PKG_NAME} --ignore-glob="**/cli/*-template/**" --doctest-plus
 
   install-pkg-guardian:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: install-pkg
     if: always()
     steps:

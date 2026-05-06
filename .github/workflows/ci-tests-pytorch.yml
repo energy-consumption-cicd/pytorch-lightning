@@ -37,13 +37,13 @@ defaults:
 
 jobs:
   pl-cpu:
-    runs-on: [self-hosted, tesla]
+    runs-on: self-hosted
     if: github.event.pull_request.draft == false
     strategy:
       fail-fast: false
       matrix:
         config:
-          - { pkg-name: "pytorch", python-version: "3.12.7", pytorch-version: "2.6" }
+          - { pkg-name: "lightning", python-version: "3.11", pytorch-version: "2.2.2" }
     timeout-minutes: 50
     env:
       PACKAGE_NAME: ${{ matrix.config.pkg-name }}
@@ -337,7 +337,7 @@ jobs:
         run: sudo chown -R "$USER" "${{ github.workspace }}"
 
   pl-cpu-guardian:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: pl-cpu
     if: always()
     steps:

@@ -11,7 +11,7 @@ on:
 
 jobs:
   auto-cc:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.event_name == 'issue' || github.event.pull_request.draft == false
     timeout-minutes: 5
     steps:

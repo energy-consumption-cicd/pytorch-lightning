@@ -19,7 +19,7 @@ defaults:
 
 jobs:
   build-packages:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     env:
       PKG_NAME: "lightning"
     steps:
@@ -47,7 +47,7 @@ jobs:
           include-hidden-files: true
 
   publish-packages:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     needs: build-packages
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     env:

@@ -33,7 +33,7 @@ jobs:
       artifact-name: dist-packages-${{ github.sha }}
 
   upload-packages:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     needs: build-packages
     if: github.event_name == 'release'
     steps:
@@ -50,7 +50,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
   release-version:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     outputs:
       tag: ${{ steps.lai-package.outputs.version }}
     steps:
@@ -67,7 +67,7 @@ jobs:
         run: python -c "import lightning ; print(f'version={lightning.__version__}')" >> $GITHUB_OUTPUT
 
   signaling:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     needs: ["release-version", "build-packages"]
     if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
     env:
@@ -131,7 +131,7 @@ jobs:
             borda
 
   pre-publish-packages:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     needs: build-packages
     if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
     strategy:
@@ -156,7 +156,7 @@ jobs:
           pypi-test-token: ${{ secrets[format('PYPI_TEST_TOKEN_{0}', matrix.name)] }}
 
   publish-packages:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     needs: [build-packages]
     if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
     strategy:

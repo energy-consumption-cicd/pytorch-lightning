@@ -16,7 +16,7 @@ defaults:
 
 jobs:
   docs-update:
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v6
         with:
