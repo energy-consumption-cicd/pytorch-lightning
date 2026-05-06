@@ -57,6 +57,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Allow RAPL energy readings
+        run: sudo /usr/local/bin/rapl-set-readable
+
       # --- MEDIÇÃO: baseline de 120s de repouso ---
       - name: "[RAPL] Baseline (120s repouso)"
         run: |
