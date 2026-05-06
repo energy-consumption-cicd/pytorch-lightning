@@ -84,7 +84,7 @@ jobs:
 
       - name: Append Env. vars for Linux
         if: ${{ runner.os == 'Linux' }}
-        run: echo "GLOO_SOCKET_IFNAME=eth0" >> $GITHUB_ENV
+        run: echo "GLOO_SOCKET_IFNAME=$(ip route get 8.8.8.8 | awk '{for(i=1;i<=NF;i++) if ($i=="dev") print $(i+1); exit}')" >> $GITHUB_ENV
 
       - name: Append Env. vars for MacOS
         if: ${{ runner.os == 'macOS' }}
