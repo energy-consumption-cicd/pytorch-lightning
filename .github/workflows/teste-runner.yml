@@ -1,7 +1,0 @@
-name: teste-runner
-on: workflow_dispatch
-jobs:
-  ping:
-    runs-on: self-hosted
-    steps:
-      - run: echo "runner ok" && hostname && whoami && pwd
