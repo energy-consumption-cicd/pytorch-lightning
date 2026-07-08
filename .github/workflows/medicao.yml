@@ -1,0 +1,159 @@
+name: Medição de Energia — PyTorch Lightning
+
+# Opção C: workflow dedicado que invoca o run_pipeline.sh existente (mesmo script
+# validado localmente), rodando no self-hosted runner (tesla). Não substitui nem
+# altera o ci-tests-pytorch.yml original.
+
+on:
+  workflow_dispatch:
+    inputs:
+      campaign:
+        description: "validacao = apenas run 0 (smoke test) | completa = runs 1..10 + mediana"
+        type: choice
+        required: true
+        default: validacao
+        options:
+          - validacao
+          - completa
+
+jobs:
+  medicao:
+    runs-on: [self-hosted, linux]
+    # Uma única run de test já leva ~15-20 min; a campanha completa (10 runs +
+    # baselines de 120s + repouso entre runs) leva várias horas. Timeout largo.
+    timeout-minutes: 1200
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+        with:
+          submodules: false   # submodules já estão na imagem Docker
+
+      - name: Permitir leitura dos contadores RAPL
+        run: sudo /usr/local/bin/rapl-set-readable
+
+      - name: Verificar disponibilidade do RAPL
+        run: |
+          if [ ! -d /sys/class/powercap/intel-rapl ]; then
+            echo "❌ RAPL não disponível neste runner"
+            exit 1
+          fi
+          echo "✅ Domínios RAPL disponíveis:"
+          ls /sys/class/powercap/intel-rapl/
+
+      - name: Verificar imagem Docker
+        run: |
+          if ! docker image inspect pytorch-lightning-medicao &>/dev/null; then
+            echo "❌ Imagem 'pytorch-lightning-medicao' não encontrada no runner."
+            echo "   Build manual na tesla antes de disparar este workflow:"
+            echo "   docker build -t pytorch-lightning-medicao \\"
+            echo "     -f ~/experimentos/medicao/repositorios/pytorch-lightning/Dockerfile ."
+            exit 1
+          fi
+          echo "✅ Imagem Docker encontrada."
+          docker image inspect pytorch-lightning-medicao --format '{{.Created}}'
+
+      # --- MODO validacao: apenas run 0, resultado não conta para a mediana ---
+      - name: Run de validação (run 0)
+        if: ${{ inputs.campaign == 'validacao' }}
+        run: |
+          RESULTS_DIR="$HOME/experimentos/medicao/resultados/pytorch-lightning/runs"
+          bash "$HOME/experimentos/medicao/repositorios/pytorch-lightning/run_pipeline.sh" 0
+          # run 0 é smoke test: mover run_00.csv para fora de runs/ para não
+          # entrar na agregação da mediana (aggregate.py globa runs/run_*.csv)
+          mkdir -p "$RESULTS_DIR/validacao"
+          if [ -f "$RESULTS_DIR/run_00.csv" ]; then
+            mv -f "$RESULTS_DIR/run_00.csv" "$RESULTS_DIR/validacao/run_00.csv"
+            echo "ℹ️  run_00.csv movido para runs/validacao/ (não conta para os resultados)"
+          fi
+
+      # --- MODO completa: 10 runs oficiais + mediana (com skip-if-exists) ---
+      - name: Executar 10 runs de medição
+        if: ${{ inputs.campaign == 'completa' }}
+        run: |
+          RESULTS_DIR="$HOME/experimentos/medicao/resultados/pytorch-lightning/runs"
+          PIPELINE="$HOME/experimentos/medicao/repositorios/pytorch-lightning/run_pipeline.sh"
+          # Garantir que nenhum run_00.csv de validação polua a mediana
+          rm -f "$RESULTS_DIR/run_00.csv"
+
+          # Valida run_NN.csv: 4 stages (build/test/train/total) presentes e colunas
+          # críticas (energy_pkg_j, energy_cores_j, wall_time_s) não-vazias e > 0.
+          # user_time_s/sys_time_s NÃO entram na validação (não usados na análise).
+          validar_csv() {
+            local csv="$1"
+            [ -f "$csv" ] || return 1
+            awk -F, '
+              NR==1 { next }
+              $2=="build"||$2=="test"||$2=="train"||$2=="total" {
+                seen[$2]=1
+                if ($3==""||$4==""||$7=="" || $3+0<=0 || $4+0<=0 || $7+0<=0) inval[$2]=1
+              }
+              END {
+                split("build test train total", req, " ")
+                for (i in req) {
+                  s=req[i]
+                  if (!(s in seen)) exit 1
+                  if (s in inval)   exit 1
+                }
+                exit 0
+              }
+            ' "$csv"
+          }
+
+          echo "## Execução (modo completa) — skip-if-exists" >> "$GITHUB_STEP_SUMMARY"
+          for i in $(seq 1 10); do
+            NN=$(printf '%02d' "$i")
+            CSV="$RESULTS_DIR/run_${NN}.csv"
+            echo "::group::Run $i de 10"
+            if validar_csv "$CSV"; then
+              echo "✅ Run $NN já existe e é válida — pulando"
+              echo "- Run $NN: já existe e é válida — **pulada**" >> "$GITHUB_STEP_SUMMARY"
+              echo "::endgroup::"
+              continue
+            fi
+            if [ -f "$CSV" ]; then
+              echo "♻️  Run $NN incompleta/inválida — reexecutando (sobrescreve)"
+              echo "- Run $NN: CSV inválido/incompleto — **reexecutada**" >> "$GITHUB_STEP_SUMMARY"
+              rm -f "$CSV"   # script só grava header se o arquivo não existir; remove p/ sobrescrever limpo
+            else
+              echo "▶️  Run $NN ausente — executando"
+              echo "- Run $NN: ausente — **executada**" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            bash "$PIPELINE" "$i"
+            echo "::endgroup::"
+            if [ "$i" -lt 10 ]; then
+              echo "⏳ Repouso entre runs (120s)..."
+              sleep 120
+            fi
+          done
+
+      - name: Calcular medianas (após run 10)
+        if: ${{ inputs.campaign == 'completa' }}
+        run: |
+          RESULTS_DIR="$HOME/experimentos/medicao/resultados/pytorch-lightning/runs"
+          SUMMARY="$HOME/experimentos/medicao/resultados/pytorch-lightning/summary.csv"
+          python3 "$HOME/experimentos/medicao/scripts/aggregate.py" "$RESULTS_DIR" "$SUMMARY"
+          {
+            echo ""
+            echo "## Medianas (10 runs) — pytorch-lightning"
+            echo '```'
+            cat "$SUMMARY"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Docker --privileged grava arquivos como root no workspace; corrige o dono
+      # via container descartável (evita depender de sudo com senha no runner).
+      - name: Corrigir permissões do workspace
+        if: always()
+        run: |
+          docker run --rm --privileged \
+            -v "${{ github.workspace }}":/w \
+            alpine chown -R "$(id -u):$(id -g)" /w || true
+
+      - name: Upload dos resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-pytorch-lightning-${{ github.run_number }}
+          path: ${{ env.HOME }}/experimentos/medicao/resultados/pytorch-lightning/
+          retention-days: 90
