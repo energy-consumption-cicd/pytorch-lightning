@@ -57,15 +57,6 @@ jobs:
           echo "✅ Imagem Docker encontrada."
           docker image inspect pytorch-lightning-medicao --format '{{.Created}}'
 
-      # O baseline do run 1 é o único medido logo após checkout + inspeção da imagem.
-      # A cauda residual dessas atividades (I/O, page cache, daemon do Docker) inflava a
-      # taxa de idle em ~2x, causando super-subtração e um falso outlier no run 1.
-      # Os runs 2..10 já são precedidos pelo repouso de 120s entre runs.
-      - name: Assentamento antes do primeiro baseline
-        run: |
-          echo "⏳ Assentamento pós-setup (60s) — evita contaminar o baseline do run 1..."
-          sleep 60
-
       # --- MODO validacao: apenas run 0, resultado não conta para a mediana ---
       - name: Run de validação (run 0)
         if: ${{ inputs.campaign == 'validacao' }}
@@ -112,6 +103,34 @@ jobs:
               }
             ' "$csv"
           }
+
+          # --- Warm-up descartado (convenção: 11 runs, mediana sobre os 10 válidos) ---
+          # Roda incondicionalmente antes de qualquer sessão com runs pendentes — inclusive
+          # retomadas após queda. Usa o run_pipeline.sh com número 0 e move o CSV para
+          # runs/warmup/ (fora do glob run_*.csv do aggregate.py); sobrescreve o anterior,
+          # pois é dado descartado por design. O rm -f run_00.csv acima também garante que
+          # um warm-up interrompido nunca deixe resíduo dentro de runs/.
+          PENDENTES=0
+          for i in $(seq 1 10); do
+            validar_csv "$RESULTS_DIR/run_$(printf '%02d' "$i").csv" || PENDENTES=$((PENDENTES+1))
+          done
+          if [ "$PENDENTES" -gt 0 ]; then
+            echo "::group::Warm-up (descartado da análise)"
+            echo "🔥 $PENDENTES run(s) pendente(s) — executando warm-up antes dos runs oficiais"
+            mkdir -p "$RESULTS_DIR/warmup"
+            bash "$PIPELINE" 0
+            mv -f "$RESULTS_DIR/run_00.csv" "$RESULTS_DIR/warmup/run_warmup.csv"
+            {
+              echo "## Warm-up executado e DESCARTADO (não entra na mediana)"
+              echo "- $PENDENTES run(s) pendente(s) nesta sessão; CSV em \`runs/warmup/run_warmup.csv\` (sobrescrito a cada sessão)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::endgroup::"
+            echo "⏳ Repouso pós-warm-up (120s)..."
+            sleep 120
+          else
+            echo "✅ Campanha já completa (10 runs válidas) — warm-up desnecessário"
+            echo "## Warm-up pulado — campanha já estava completa" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           echo "## Execução (modo completa) — skip-if-exists" >> "$GITHUB_STEP_SUMMARY"
           for i in $(seq 1 10); do
