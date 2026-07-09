@@ -57,6 +57,15 @@ jobs:
           echo "✅ Imagem Docker encontrada."
           docker image inspect pytorch-lightning-medicao --format '{{.Created}}'
 
+      # O baseline do run 1 é o único medido logo após checkout + inspeção da imagem.
+      # A cauda residual dessas atividades (I/O, page cache, daemon do Docker) inflava a
+      # taxa de idle em ~2x, causando super-subtração e um falso outlier no run 1.
+      # Os runs 2..10 já são precedidos pelo repouso de 120s entre runs.
+      - name: Assentamento antes do primeiro baseline
+        run: |
+          echo "⏳ Assentamento pós-setup (60s) — evita contaminar o baseline do run 1..."
+          sleep 60
+
       # --- MODO validacao: apenas run 0, resultado não conta para a mediana ---
       - name: Run de validação (run 0)
         if: ${{ inputs.campaign == 'validacao' }}
