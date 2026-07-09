@@ -19,6 +19,10 @@ on:
 jobs:
   medicao:
     runs-on: [self-hosted, linux]
+    env:
+      # O contexto `env` do Actions nao expoe o HOME do processo do runner: a
+      # interpolacao resolvia para string vazia e o upload-artifact nao achava nada.
+      HOME_DIR: /home/maycon
     # Uma única run de test já leva ~15-20 min; a campanha completa (10 runs +
     # baselines de 120s + repouso entre runs) leva várias horas. Timeout largo.
     timeout-minutes: 1200
@@ -155,5 +159,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: resultados-pytorch-lightning-${{ github.run_number }}
-          path: ${{ env.HOME }}/experimentos/medicao/resultados/pytorch-lightning/
+          path: ${{ env.HOME_DIR }}/experimentos/medicao/resultados/pytorch-lightning/
           retention-days: 90
