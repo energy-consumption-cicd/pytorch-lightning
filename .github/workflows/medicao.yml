@@ -70,6 +70,15 @@ jobs:
             mv -f "$RESULTS_DIR/run_00.csv" "$RESULTS_DIR/validacao/run_00.csv"
             echo "ℹ️  run_00.csv movido para runs/validacao/ (não conta para os resultados)"
           fi
+          # Sanity check não bloqueante de user/sys (ver alertar_user_sys no modo completa)
+          awk -F, '
+            NR==1 { next }
+            ($2=="build" || $2=="test" || $2=="train") && $7+0 > 0 {
+              r = ($8 + $9) / $7
+              if (r < 0.5)
+                printf "::warning::[run 0] stage %s: (user+sys)/wall = %.4f < 0.5 (user=%ss sys=%ss wall=%ss) — captura de user/sys pode ter regredido para o host\n", $2, r, $8, $9, $7
+            }
+          ' "$RESULTS_DIR/validacao/run_00.csv"
 
       # --- MODO completa: 10 runs oficiais + mediana (com skip-if-exists) ---
       - name: Executar 10 runs de medição
@@ -104,6 +113,26 @@ jobs:
             ' "$csv"
           }
 
+          # Sanity check NÃO bloqueante de user/sys (regressão detectada em 2026-07-10 no PL):
+          # em stages CPU-bound (build/test/train — todos, neste estudo), (user+sys)/wall < 0.5
+          # indica que user/sys mediram o cliente `docker run` no host, e não os processos
+          # dentro do container (mecanismo TIMEFORMAT + /timing do run_pipeline.sh). Emite
+          # ::warning:: e registra no step summary; não invalida a run — energia e wall não
+          # dependem dessas colunas.
+          alertar_user_sys() {
+            local csv="$1" origem="$2"
+            [ -f "$csv" ] || return 0
+            awk -F, -v origem="$origem" '
+              NR==1 { next }
+              ($2=="build" || $2=="test" || $2=="train") && $7+0 > 0 {
+                r = ($8 + $9) / $7
+                if (r < 0.5)
+                  printf "::warning::[%s] stage %s: (user+sys)/wall = %.4f < 0.5 (user=%ss sys=%ss wall=%ss) — captura de user/sys pode ter regredido para o host\n", origem, $2, r, $8, $9, $7
+              }
+            ' "$csv" | tee -a "$GITHUB_STEP_SUMMARY"
+            return 0
+          }
+
           # --- Warm-up descartado (convenção: 11 runs, mediana sobre os 10 válidos) ---
           # Roda incondicionalmente antes de qualquer sessão com runs pendentes — inclusive
           # retomadas após queda. Usa o run_pipeline.sh com número 0 e move o CSV para
@@ -120,6 +149,7 @@ jobs:
             mkdir -p "$RESULTS_DIR/warmup"
             bash "$PIPELINE" 0
             mv -f "$RESULTS_DIR/run_00.csv" "$RESULTS_DIR/warmup/run_warmup.csv"
+            alertar_user_sys "$RESULTS_DIR/warmup/run_warmup.csv" "warm-up"
             {
               echo "## Warm-up executado e DESCARTADO (não entra na mediana)"
               echo "- $PENDENTES run(s) pendente(s) nesta sessão; CSV em \`runs/warmup/run_warmup.csv\` (sobrescrito a cada sessão)"
@@ -152,11 +182,19 @@ jobs:
               echo "- Run $NN: ausente — **executada**" >> "$GITHUB_STEP_SUMMARY"
             fi
             bash "$PIPELINE" "$i"
+            alertar_user_sys "$CSV" "run $NN"
             echo "::endgroup::"
             if [ "$i" -lt 10 ]; then
               echo "⏳ Repouso entre runs (120s)..."
               sleep 120
             fi
+          done
+
+          # Varredura final: cobre também runs pré-existentes puladas pelo skip-if-exists,
+          # para que nenhuma campanha feche em silêncio com user/sys inválidos.
+          for i in $(seq 1 10); do
+            NN=$(printf '%02d' "$i")
+            alertar_user_sys "$RESULTS_DIR/run_${NN}.csv" "run $NN"
           done
 
       - name: Calcular medianas (após run 10)
