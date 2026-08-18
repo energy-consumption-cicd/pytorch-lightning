@@ -20,7 +20,7 @@ defaults:
 
 jobs:
   build-packages:
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         pkg-name: ${{ fromJSON(inputs.pkg-names) }}
@@ -49,7 +49,7 @@ jobs:
 
   merge-artifacts:
     needs: build-packages
-    runs-on: self-hosted
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/download-artifact@v8
         with: # download all build artifacts
