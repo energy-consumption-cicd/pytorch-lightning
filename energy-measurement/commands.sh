@@ -34,7 +34,7 @@ case "$STAGE" in
     if [ ! -d /project/tests/legacy/checkpoints ] || \
        [ -z "$(ls -A /project/tests/legacy/checkpoints 2>/dev/null)" ]; then
         echo " Checkpoints legados ausentes em /project/tests/legacy/checkpoints/" >&2
-        echo "   Execute 'bash /commands.sh setup' antes, ou use run_pipeline.sh" >&2
+        echo "  Run 'bash /commands.sh setup' first, or use run_pipeline.sh" >&2
         exit 1
     fi
 

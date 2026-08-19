@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [ ! -x /usr/bin/time ]; then
-    echo " /usr/bin/time not found. Instale com: sudo apt-get install time" >&2
+    echo "/usr/bin/time not found. Install it with: sudo apt-get install time" >&2
     exit 1
 fi
 if ! command -v docker &>/dev/null; then
@@ -136,7 +136,7 @@ if [ ! -f "$CSV_OUT" ]; then
         > "$CSV_OUT"
 fi
 
-echo "⏳ Baseline: aguardando ${BASELINE_DURATION}s de repouso..."
+echo "Baseline rest (${BASELINE_DURATION}s)..."
 read -r bl_pkg_s bl_cores_s bl_gpu_s bl_ram_s <<< "$(read_all_uj)"
 sleep "$BASELINE_DURATION"
 read -r bl_pkg_e bl_cores_e bl_gpu_e bl_ram_e <<< "$(read_all_uj)"
@@ -151,7 +151,7 @@ bl_rate_cores=$(awk "BEGIN { printf \"%.4f\", $bl_delta_cores / $BASELINE_DURATI
 bl_rate_gpu=$(awk   "BEGIN { printf \"%.4f\", $bl_delta_gpu   / $BASELINE_DURATION }")
 bl_rate_ram=$(awk   "BEGIN { printf \"%.4f\", $bl_delta_ram   / $BASELINE_DURATION }")
 
-echo "Taxas de baseline (µJ/s):"
+echo "Baseline rate (uJ/s):"
 echo "  pkg:   $bl_rate_pkg"
 echo "  cores: $bl_rate_cores"
 echo "  gpu:   $bl_rate_gpu"
@@ -262,7 +262,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
 
 ## Run ${RUN_NUM} - pytorch-lightning
 
-| Etapa | pkg (J) | cores (J) | gpu (J) | ram (J) | wall (s) |
+| Stage | pkg (J) | cores (J) | gpu (J) | ram (J) | wall (s) |
 |---|---|---|---|---|---|
 | build  | ${j_pkg_build}  | ${j_cores_build}  | ${j_gpu_build}  | ${j_ram_build}  | ${wall_build}  |
 | test   | ${j_pkg_test}   | ${j_cores_test}   | ${j_gpu_test}   | ${j_ram_test}   | ${wall_test}   |
